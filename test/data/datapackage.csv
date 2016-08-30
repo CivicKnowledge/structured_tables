@@ -1,0 +1,36 @@
+"Term","value",,
+"title","Registered Voters, By County",,
+"description","Percent of the eligible population registered to vote and the percent who voted in statewide elections.",,
+"name","cdph.ca.gov-hci-registered_voters-county",,
+"version","1.3.4",,
+,,,
+"TermValueName","resources","url",
+"TermValueName","fields","name",
+"Synonym","schema","resources.schema",
+"Synonym","field","schema.fields",
+,,,
+,,,
+,,,
+"resources","http://example.com/resource1.csv",,
+"resources.title","First Resource",,
+"resources.name","the-first-resource",,
+"resources.mediatype","text/csv",,
+"resources.format","csv",,
+,,,
+"Section","schema","type","description"
+"schema",,,
+"schema.fields","country","string","description"
+"schema.fields","country","string","description"
+"schema.fields","country","string","description"
+,,,
+"resources","http://example.com/resource2.csv",,
+"resources.title","Second Resource",,
+"resources.name","the-second-resource",,
+"resources.mediatype","text/csv",,
+"resources.format","csv",,
+,,,
+"Section","schema","type","description"
+"schema",,,
+"schema.fields","country","string","description"
+"schema.fields","country","string","description"
+"schema.fields","country","string","description"
