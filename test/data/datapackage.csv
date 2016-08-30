@@ -6,31 +6,29 @@
 ,,,
 "TermValueName","resources","url",
 "TermValueName","fields","name",
+"Synonym","resource","resources",
 "Synonym","schema","resources.schema",
-"Synonym","field","schema.fields",
+"Synonym",".field","schema.fields",
 ,,,
+"Section","Resources","type","description"
+"resource","http://example.com/resource1.csv",,
+".title","First Resource",,
+".name","the-first-resource",,
+".mediatype","text/csv",,
+".format","csv",,
 ,,,
-,,,
-"resources","http://example.com/resource1.csv",,
-"resources.title","First Resource",,
-"resources.name","the-first-resource",,
-"resources.mediatype","text/csv",,
-"resources.format","csv",,
-,,,
-"Section","schema","type","description"
 "schema",,,
-"schema.fields","country","string","description"
-"schema.fields","country","string","description"
-"schema.fields","country","string","description"
+".field","country","string","description"
+".field","country","string","description"
+".field","country","string","description"
 ,,,
-"resources","http://example.com/resource2.csv",,
-"resources.title","Second Resource",,
-"resources.name","the-second-resource",,
-"resources.mediatype","text/csv",,
-"resources.format","csv",,
+"resource","http://example.com/resource2.csv",,
+".title","Second Resource",,
+".name","the-second-resource",,
+".mediatype","text/csv",,
+".format","csv",,
 ,,,
-"Section","schema","type","description"
 "schema",,,
-"schema.fields","country","string","description"
-"schema.fields","country","string","description"
-"schema.fields","country","string","description"
+".field","country","string","description"
+".field","country","string","description"
+".field","country","string","description"
