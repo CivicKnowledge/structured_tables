@@ -1,3 +1,4 @@
-Strucutred Table Format
-=======================
-heck that it worked.
+Strucutred Tabluar Format
+=========================
+
+Parse and manipulate a Structured Tabluar File

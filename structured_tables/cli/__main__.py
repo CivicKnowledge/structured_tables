@@ -3,6 +3,6 @@
 
 
 import sys
-from structured_tables.cli import main  # @UnresolvedImport
+from structured_tables.cli import main
 
 main(sys.argv)
