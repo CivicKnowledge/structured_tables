@@ -92,8 +92,7 @@ class MyTestCase(unittest.TestCase):
         d = term_interp.as_dict()
         term_interp.import_declare_doc(d)
 
-        print json.dumps(term_interp.declare_dict, indent=4)
-
+        print(json.dumps(term_interp.declare_dict, indent=4))
 
     def test_interpretation(self):
         from os.path import dirname, join
@@ -121,7 +120,7 @@ class MyTestCase(unittest.TestCase):
                     g[t.row][t.col-1] = t.value
 
             for t in term_interp:
-                print t
+                print(t)
 
             root = link_terms(term_gen)
 
@@ -150,11 +149,11 @@ class MyTestCase(unittest.TestCase):
 
             rg.dump()
 
-            print rg._root
+            print(rg._root)
 
             import json
 
-            print json.dumps(convert(rg._root), indent = 4)
+            print(json.dumps(convert(rg._root), indent = 4))
 
     def test_json(self):
         from os.path import dirname, join
@@ -172,7 +171,7 @@ class MyTestCase(unittest.TestCase):
             flt = flatten_dict(convert_to_dict(root))
 
             for k, v in flt.items():
-                print k, v
+                print( k, v)
 
             self.assertEquals(flt['creator.email'], 'HCIOHE@cdph.ca.gov')
             self.assertEquals(flt['creator.name'],  'Office of Health Equity')
@@ -195,7 +194,7 @@ class MyTestCase(unittest.TestCase):
 
             for t in tp:
                 pass
-                print t.valid, t
+                print(t.valid, t)
 
     def test_includes(self):
         from os.path import dirname, join

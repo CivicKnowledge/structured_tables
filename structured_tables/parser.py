@@ -16,7 +16,18 @@ class ParserError(Exception):
 
 
 class Term(object):
-    """Parses a row into the parts of a term"""
+    """Parses a row into the parts of a term
+
+        Public attributes. These are set externally to the constructor.
+
+        file_name Filename or URL of faile that contains term
+        row: Row number of term
+        col Column number of term
+        is_arg_child Term was generated from arguments of parent
+        child_property_type What datatype to use in dict conversion
+        valid Did term pass validation tests? Usually based on DeclaredTerm values.
+
+    """
 
     def __init__(self, term, value, term_args=[]):
         """
@@ -24,13 +35,8 @@ class Term(object):
         :param term: Simple or compoint term name
         :param value: Term value, from second column of spreadsheet
         :param term_args: Colums 2+ from term row
-        :param file_name: Filename or URL of faile that contains term
-        :param row: Row number of term
-        :param col: Column number of term
-        :param is_arg_child: Term was generated from arguments of parent
-        :param child_property_type: What datatype to use in dict conversion
-        :param valid: Did term pass validation tests? Usually based on DeclaredTerm values.
-        :return:
+
+
         """
 
         self.parent_term, self.record_term = Term.split_term_lower(term)
@@ -38,7 +44,7 @@ class Term(object):
         self.value = value.strip() if value else None
         self.args = [x.strip() for x in term_args]
 
-        self.section = None # Name of section the term is in.
+        self.section = None  # Name of section the term is in.
 
         self.file_name = None
         self.row = None
@@ -52,16 +58,16 @@ class Term(object):
         self.child_property_type = 'any'
         self.valid = None
 
-        self.is_arg_child = None # If true, term was
+        self.is_arg_child = None  # If true, term was
 
-        self.children = [] # WHen terms are linked, hold term's children.
+        self.children = []  # WHen terms are linked, hold term's children.
 
     @classmethod
     def split_term(cls, term):
         """
         Split a term in to parent and record term components
-        :param term:
-        :return:
+        :param term: combined term text
+        :return: Tuple of parent and record term
         """
         if '.' in term:
             parent_term, record_term = term.split('.')
@@ -79,8 +85,8 @@ class Term(object):
     def split_term_lower(cls, term):
         """
         Like split_term, but also lowercases both parent and record term
-        :param term:
-        :return:
+        :param term: combined term text
+        :return: Tuple of parent and record term
 
         """
 
@@ -114,6 +120,9 @@ class Term(object):
 
 
 class RowGenerator(object):
+    """An object that generates rows. The current implementation mostly just a wrapper around
+    csv.reader, but it add a path property so term interperters know where the terms are coming from
+    """
 
     def __init__(self, path):
 
@@ -169,14 +178,7 @@ class TermGenerator(object):
 
         self._row_gen = row_gen
 
-        if self._row_gen.path:
-            self._path = self._row_gen.path
-            self._root_directory = dirname(self._path)
-            self._file_name = basename(self._path)
-        else:
-            self._path = self._root_directory = self._file_name = None
-
-        self.errors = []
+        self._path = self._row_gen.path
 
     def __iter__(self):
         """An interator that generates term objects"""
@@ -186,7 +188,9 @@ class TermGenerator(object):
             if not row[0].strip() or row[0].strip().startswith('#'):
                 continue
 
-            t = Term(row[0].lower(), row[1], row[2:])
+            t = Term(row[0].lower(),
+                     row[1] if len(row)>1 else '',
+                     row[2:] if len(row)>2 else [])
             t.row = line_n
             t.col = 1
             t.file_name = self._path
@@ -195,16 +199,9 @@ class TermGenerator(object):
 
             if rt_l == 'include':
 
-                import csv
-                from os.path import dirname, exists, join
-
-                if not self._root_directory or not exists(self._root_directory):
-                    raise ParserError("Can't include: Root directory '{}' doesn't exist"
-                                      .format(self._root_directory))
-
                 yield t
 
-                for t in TermGenerator(RowGenerator(join(self._root_directory, t.value.strip('/')))):
+                for t in self.include_term_generator(t.value):
                     yield t
 
                 continue  # Already yielded the include term
@@ -216,16 +213,29 @@ class TermGenerator(object):
                 for col, value in enumerate(t.args, 0):
                     if value.strip():
                         t2 = Term(t.record_term.lower() + '.' + str(col), value, [])
-                        t2.is_arg_child=True
-                        t2.row=line_n
-                        t2.col=col + 2  # The 0th argument starts in col 2
-                        t2.file_name=self._path
+                        t2.is_arg_child = True
+                        t2.row = line_n
+                        t2.col = col + 2  # The 0th argument starts in col 2
+                        t2.file_name = self._path
                         yield t2
+
+    def include_term_generator(self, include_ref):
+        from os.path import dirname, join
+
+        if not self._path:
+            raise ParserError("Can't include because don't know current path"
+                              .format(self._root_directory))
+
+        if include_ref.startwith('http'):
+            path = include_ref
+        else:
+            path = join(dirname(self._path), include_ref.strip('/'))
+
+        return TermGenerator(RowGenerator(path))
 
 
 class TermInterpreter(object):
     """Takes a stream of terms and sets the parameter map, valid term names, etc """
-
 
     def __init__(self, term_gen, remove_special=True):
         """
@@ -236,23 +246,17 @@ class TermInterpreter(object):
 
         from collections import defaultdict
 
-        self._remove_special =remove_special
+        self._remove_special = remove_special
 
         self._term_gen = term_gen
 
-        self._param_map = []
+        self._param_map = []  # Current parameter map, the args of the last Section term
 
-        self._synonyms = {}
-
+        # _sections and _terms are loaded from Declare documents, in
+        # handle_declare and import_declare_doc. The Declare doc information
+        # can also be loaded before parsing, so the Declare term can be eliminated.
         self._sections = {}  # Declared sections and their arguments
-
         self._terms = {}  # Pre-defined terms, plus TermValueName and ChildPropertyType
-
-        self.errors = []
-
-        # Need to bootstrap this, because the DeclareTerm in the main
-        # ConformsTo doc for Section comes after Section
-        self._terms[NO_TERM+'.section'] = {'termvaluename': 'name'}
 
     @property
     def sections(self):
@@ -260,12 +264,11 @@ class TermInterpreter(object):
 
     @property
     def synonyms(self):
-       return {k:v['synonym'] for k,v in self._terms.items() if 'synonym' in v}
+        return {k: v['synonym'] for k, v in self._terms.items() if 'synonym' in v}
 
     @property
     def terms(self):
         return self._terms
-
 
     @property
     def declare_dict(self):
@@ -274,7 +277,6 @@ class TermInterpreter(object):
             'terms': self.terms,
         }
 
-
     def as_dict(self):
         """Iterate, link terms and convert to a dict"""
 
@@ -282,10 +284,12 @@ class TermInterpreter(object):
 
     @staticmethod
     def join(t1, t2):
-        return '.'.join((t1,t2))
+        return '.'.join((t1, t2))
 
     def __iter__(self):
         import copy
+
+        last_parent_term = 'root'
 
         # Remapping the default record value to another property name
         for t in self._term_gen:
@@ -294,17 +298,22 @@ class TermInterpreter(object):
 
             # Substitute synonyms
             try:
-                nt.parent_term, nt.record_term = self._synonyms[(t.parent_term, t.record_term)]
+                nt.parent_term, nt.record_term = self.synonyms[self.join(t.parent_term, t.record_term)]
             except KeyError:
                 pass
 
+            if nt.parent_term == ELIDED_TERM and last_parent_term:
+                nt.parent_term = last_parent_term
+            elif not nt.is_arg_child:
+                last_parent_term = nt.record_term
+
             # Remap integer record terms to names from the parameter map
             try:
-                nt.record_term = self._param_map[int(t.record_term)]
+                nt.record_term = str(self._param_map[int(t.record_term)])
             except ValueError:
                 pass  # the record term wasn't an integer
             except IndexError:
-                pass # Probably no parameter map.
+                pass  # Probably no parameter map.
 
             # Handle other special terms
             if hasattr(self, 'handle_' + t.record_term.lower()):
@@ -312,13 +321,13 @@ class TermInterpreter(object):
                 if self._remove_special:
                     continue
 
-            nt.child_property_type = self._terms.get(self.join(t.parent_term, t.record_term), {}) \
+            nt.child_property_type = self._terms.get(self.join(nt.parent_term, nt.record_term), {}) \
                 .get('childpropertytype', 'any')
 
-            nt.term_value_name = self._terms.get(self.join(t.parent_term, t.record_term), {}) \
+            nt.term_value_name = self._terms.get(self.join(nt.parent_term, nt.record_term), {}) \
                 .get('termvaluename', '@value')
 
-            nt.valid = self.join(t.parent_term.lower(), t.record_term.lower()) in self._terms
+            nt.valid = self.join(nt.parent_term.lower(), nt.record_term.lower()) in self._terms
 
             yield nt
 
@@ -330,7 +339,7 @@ class TermInterpreter(object):
         insert the terms in the file into the stream"""
         from os.path import dirname, join
 
-        fn = join(dirname(t.file_name),t.value.strip('/') )
+        fn = join(dirname(t.file_name), t.value.strip('/'))
 
         ti = DeclareTermInterpreter(TermGenerator(RowGenerator(fn)))
 
@@ -340,11 +349,11 @@ class TermInterpreter(object):
         """Import a declare cod that has been parsed and converted to a dict"""
 
         for e in d['declaresection']:
-
-            self._sections[e['section_name'].lower()] = {
-                'args': [v for k, v in sorted(e.items()) if isinstance(k, int)],
-                'terms': list()
-            }
+            if e:
+                self._sections[e['section_name'].lower()] = {
+                    'args': [v for k, v in sorted((k, v) for k, v in e.items() if isinstance(k, int))],
+                    'terms': list()
+                }
 
         for e in d['declareterm']:
             terms = self.join(*Term.split_term_lower(e['term_name']))
@@ -361,20 +370,34 @@ class TermInterpreter(object):
                 st = self._sections[e['section'].lower()]['terms']
 
                 if e['section'] not in st:
-                    st.append(terms)
+                    st.append(e['term_name'])
 
+        for e in d['declarevalueset']:
+            for k,v in self._terms.items():
+                if 'valueset' in v and e.get('name',None) == v['valueset']:
+                    v['valueset'] = e['value']
 
 
 class DeclareTermInterpreter(TermInterpreter):
-    def __init__(self, term_gen, remove_special=True):
+    """
+    A version of the TermInterpreter specifically for parsing Declare documents. These documents
+    require some special handling because they declare terms that are required for propertly parsing
+    Metatab files. These require declarations are pre-declared in this class.
+    """
+
+    def __init__(self, term_gen, remove_special=False):
         super(DeclareTermInterpreter, self).__init__(term_gen, remove_special)
 
         # Configure the parser to output a more useful structure
         self._terms.update({
-            NO_TERM+'.synonym': {'termvaluename': 'term_name', 'childpropertytype': 'sequence'},
-            NO_TERM+'.declareterm': {'termvaluename': 'term_name', 'childpropertytype': 'sequence'},
-            NO_TERM+'.declaresection': {'termvaluename': 'section_name', 'childpropertytype': 'sequence'},
+            NO_TERM + '.section': {'termvaluename': 'name'},
+            NO_TERM + '.synonym': {'termvaluename': 'term_name', 'childpropertytype': 'sequence'},
+            NO_TERM + '.declareterm': {'termvaluename': 'term_name', 'childpropertytype': 'sequence'},
+            NO_TERM + '.declaresection': {'termvaluename': 'section_name', 'childpropertytype': 'sequence'},
+            NO_TERM + '.declarevalueset': {'termvaluename': 'name', 'childpropertytype': 'sequence'},
+            'declarevalueset.value': {'termvaluename': 'value', 'childpropertytype': 'sequence'},
         })
+
 
 def link_terms(term_generator):
     """Return a heirarchy of records from a stream of terms
@@ -390,8 +413,9 @@ def link_terms(term_generator):
         try:
             parent = last_term_map[term.parent_term]
         except KeyError as e:
+
             raise ParserError("Failed to find parent term in last term map: {} {} \nTerm: \n{}"
-                                 .format(e.__class__.__name__, e, term))
+                              .format(e.__class__.__name__, e, term))
 
         parent.add_child(term)
 

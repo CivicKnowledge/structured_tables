@@ -18,9 +18,9 @@ def main(sys_args):
 
     g = parser.add_mutually_exclusive_group(required=True)
     g.add_argument('-t', '--terms', default=False, action='store_true',
-                   help='Parse a file and print out the stream of terms')
-    g.add_argument('-r', '--records', default=False, action='store_true',
-                   help='Parse a file and print out a strean of reacords')
+                   help='Parse a file and print out the stream of terms, before interpretation')
+    g.add_argument('-i', '--interp', default=False, action='store_true',
+                   help='Parse a file and print out the stream of terms, after interpretation')
     g.add_argument('-j', '--json', default=False, action='store_true',
                    help='Parse a file and print out a JSON representation')
     g.add_argument('-y', '--yaml', default=False, action='store_true',
@@ -35,22 +35,23 @@ def main(sys_args):
 
     rg = RowGenerator(args.file)
 
-    term_gen = TermGenerator(rg)
+    term_gen = list(TermGenerator(rg))
 
     if args.declare:
-        term_interp = TermInterpreter(term_gen)
-    else:
         term_interp = DeclareTermInterpreter(term_gen)
+    else:
+        term_interp = TermInterpreter(term_gen)
 
-    if args.terms:
+    if args.interp:
+        for t in list(term_interp):
+            print(t)
+        exit(0)
+    elif args.terms:
         for t in term_gen:
-            print (t)
-
-        sys.exit(0)
+            print(t)
+        exit(0)
 
     dicts = term_interp.as_dict()
-
-    print(dicts)
 
     if args.declare:
         term_interp.import_declare_doc(dicts)

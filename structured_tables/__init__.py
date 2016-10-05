@@ -4,5 +4,4 @@
 Record objects for the Simple Data Package format.
 """
 
-
-from parser import *
+from .parser import *
