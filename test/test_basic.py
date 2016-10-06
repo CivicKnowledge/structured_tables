@@ -25,7 +25,6 @@ def term_pairs(root):
 
     return sorted(s);
 
-
 # From  https://medium.com/@amirziai/flattening-json-objects-in-python-f5343c794b10#.n3bfyujl8
 def flatten_dict(y):
     out = {}
@@ -47,34 +46,75 @@ def flatten_dict(y):
 
 class MyTestCase(unittest.TestCase):
 
+
+    def test_web(self):
+        from os.path import dirname, join
+        from structured_tables import TermGenerator, TermInterpreter, CsvPathRowGenerator
+        fn = join(dirname(__file__), 'data', 'example1-web.csv')
+
+        with open(fn) as f:
+            term_gen = list(TermGenerator(CsvPathRowGenerator(fn)))
+
+            term_interp = TermInterpreter(term_gen)
+
+            print term_interp.as_dict().keys()
+
+            print term_interp.errors_as_dict()
+
     def test_terms(self):
         from os.path import dirname, join
-        from structured_tables import TermGenerator
+        from structured_tables import TermGenerator, TermInterpreter
+        from structured_tables import CsvPathRowGenerator, CsvDataRowGenerator, RowGenerator
         import csv
         import json
 
         fn = join(dirname(__file__), 'data', 'example1.csv')
 
         with open(fn) as f:
-            terms = list(TermParser(csv.reader(f), path=fn))
+            str_data = f.read();
 
-            self.assertEqual(270, len(terms))
+        with open(fn) as f:
+            row_data = [row for row in csv.reader(f)]
 
-            #for i, t in enumerate(terms):
-            #    print i, t
+        for rg_args in ( (CsvPathRowGenerator,fn),
+                    (CsvDataRowGenerator,str_data, fn),
+                    (RowGenerator,row_data, fn) ):
 
-            self.assertEqual('conformsto', terms[0].record_term)
-            self.assertEqual('metadata.csv', terms[0].value)
+            with open(fn) as f:
 
-            self.assertEqual('metadata.csv', terms[51].file_name)
-            self.assertEqual('<no_term>', terms[51].parent_term)
-            self.assertEqual('declareterm', terms[51].record_term)
-            self.assertEqual('Column.Description', terms[51].value)
+                rg = rg_args[0](*rg_args[1:])
 
-            self.assertEqual('example1.csv', terms[108].file_name)
-            self.assertEqual('column', terms[108].parent_term)
-            self.assertEqual('0', terms[108].record_term)
-            self.assertEqual('int', terms[108].value)
+                print rg.__class__.__name__
+
+                terms = list(TermGenerator(rg))
+
+                #for i, t in enumerate(terms):
+                #    print i, t
+
+                self.assertEqual(141, len(terms))
+
+                self.assertEqual('declare', terms[0].record_term)
+                self.assertEqual('metadata.csv', terms[0].value)
+
+                self.assertTrue(terms[48].file_name.endswith('example1.csv'))
+                self.assertEqual('<no_term>', terms[48].parent_term)
+                self.assertEqual('column', terms[48].record_term)
+                self.assertEqual('geoname', terms[48].value)
+
+                self.assertTrue(terms[100].file_name.endswith('example1.csv'))
+                self.assertEqual('<no_term>', terms[100].parent_term)
+                self.assertEqual('column', terms[100].record_term)
+                self.assertEqual('percent', terms[100].value)
+
+                rg = rg_args[0](*rg_args[1:])
+
+                terms = TermInterpreter(TermGenerator(rg))
+
+                self.assertListEqual(['creator', 'datafile', 'description', 'documentation', 'format', 'homepage',
+                                      'identifier', 'note', 'obsoletes', 'spatial', 'spatialgrain', 'table',
+                                      'time', 'title', 'version', 'wrangler'],
+                                     sorted(terms.as_dict().keys()) )
+
 
     def test_declarations(this):
         from os.path import dirname, join
@@ -129,31 +169,26 @@ class MyTestCase(unittest.TestCase):
             #for k, v in sorted(flt.items()):
             #    print k, v
 
-
-    def test_records(self):
-
+    def test_errors(self):
         from os.path import dirname, join
-        from structured_tables import TermGenerator
-        import csv
-        import json
-
-        fn = join(dirname(__file__), 'data', 'example1.csv')
+        from structured_tables import TermGenerator, TermInterpreter, CsvPathRowGenerator
+        fn = join(dirname(__file__), 'data', 'errors.csv')
 
         with open(fn) as f:
-            r = csv.reader(f)
-            tp = TermGenerator(r)
 
-            rg = RecordGenerator(tp)
+            term_gen = list(TermGenerator(CsvPathRowGenerator(fn)))
 
-            rg.run()
+            term_interp = TermInterpreter(term_gen)
 
-            rg.dump()
+            print term_interp.as_dict().keys()
 
-            print(rg._root)
+            self.assertEquals(1, term_interp.errors[0].term.row)
 
-            import json
 
-            print(json.dumps(convert(rg._root), indent = 4))
+            print term_interp.errors_as_dict()
+
+
+
 
     def test_json(self):
         from os.path import dirname, join

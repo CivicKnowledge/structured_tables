@@ -12,6 +12,12 @@ ELIDED_TERM = '<elided_term>'  # A '.' in term cell, but no term before it.
 
 
 class ParserError(Exception):
+
+    def __init__(self, *args, **kwargs):
+        super(ParserError, self).__init__(*args, **kwargs)
+        self.term = None
+
+class IncludeError(ParserError):
     pass
 
 
@@ -119,7 +125,7 @@ class Term(object):
             return "{}{}.{}: {}".format(self.file_ref(), self.parent_term, self.record_term, self.value)
 
 
-class RowGenerator(object):
+class CsvPathRowGenerator(object):
     """An object that generates rows. The current implementation mostly just a wrapper around
     csv.reader, but it add a path property so term interperters know where the terms are coming from
     """
@@ -137,12 +143,19 @@ class RowGenerator(object):
 
         if self._path.startswith('http'):
             import urllib2
-            f = urllib2.urlopen(self._path)
+            try:
+                f = urllib2.urlopen(self._path)
+            except urllib2.URLError:
+                raise IncludeError("Failed to find file by url: {}".format(self._path))
+
             f.name = self._path  # to be symmetric with files.
         else:
             from os.path import join
 
-            f = open(self._path)
+            try:
+                f = open(self._path)
+            except IOError:
+                raise IncludeError("Failed to find file: {}".format(self._path) )
 
         self._f = f
 
@@ -161,6 +174,62 @@ class RowGenerator(object):
             yield row
 
         self.close()
+
+
+class CsvDataRowGenerator(object):
+    """Generate rows from CSV data, as a string
+    """
+
+    def __init__(self, data, path = None):
+
+        self._data = data
+        self._path = path or '<none>'
+
+    @property
+    def path(self):
+        return self._path
+
+    def open(self):
+        pass
+
+    def close(self):
+        pass
+
+    def __iter__(self):
+        import csv
+        from cStringIO import StringIO
+
+        f = StringIO(self._data)
+
+        # Python 3, should use yield from
+        for row in csv.reader(f):
+            yield row
+
+
+class RowGenerator(object):
+    """An object that generates rows. The current implementation mostly just a wrapper around
+    csv.reader, but it add a path property so term interperters know where the terms are coming from
+    """
+
+    def __init__(self, rows, path = None):
+
+        self._rows = rows
+        self._path = path or '<none>'
+
+    @property
+    def path(self):
+        return self._path
+
+    def open(self):
+        pass
+
+    def close(self):
+        pass
+
+    def __iter__(self):
+
+        for row in self._rows:
+            yield row
 
 
 class TermGenerator(object):
@@ -219,6 +288,7 @@ class TermGenerator(object):
                         t2.file_name = self._path
                         yield t2
 
+
     def include_term_generator(self, include_ref):
         from os.path import dirname, join
 
@@ -258,6 +328,8 @@ class TermInterpreter(object):
         self._sections = {}  # Declared sections and their arguments
         self._terms = {}  # Pre-defined terms, plus TermValueName and ChildPropertyType
 
+        self.errors = []
+
     @property
     def sections(self):
         return self._sections
@@ -282,6 +354,23 @@ class TermInterpreter(object):
 
         return convert_to_dict(link_terms(self))
 
+    def errors_as_dict(self):
+
+        errors = []
+        for e in self.errors:
+
+            errors.append({
+                'file': e.term.file_name,
+                'row': e.term.row,
+                'col': e.term.col,
+                'term': self.join(e.term.parent_term, e.term.record_term),
+                'error': str(e)
+            })
+
+
+        return errors
+
+
     @staticmethod
     def join(t1, t2):
         return '.'.join((t1, t2))
@@ -298,7 +387,9 @@ class TermInterpreter(object):
 
             # Substitute synonyms
             try:
-                nt.parent_term, nt.record_term = self.synonyms[self.join(t.parent_term, t.record_term)]
+                syn_term = self.synonyms[self.join(t.parent_term, t.record_term)]
+
+                nt.parent_term, nt.record_term = Term.split_term_lower(syn_term);
             except KeyError:
                 pass
 
@@ -339,43 +430,54 @@ class TermInterpreter(object):
         insert the terms in the file into the stream"""
         from os.path import dirname, join
 
-        fn = join(dirname(t.file_name), t.value.strip('/'))
+        if t.value.startswith('http'):
+            fn = t.value.strip('/')
+        else:
+            fn = join(dirname(t.file_name), t.value.strip('/'))
 
-        ti = DeclareTermInterpreter(TermGenerator(RowGenerator(fn)))
+        ti = DeclareTermInterpreter(TermGenerator(CsvPathRowGenerator(fn)))
 
-        self.import_declare_doc(ti.as_dict())
+        try:
+            self.import_declare_doc(ti.as_dict())
+        except IncludeError as e:
+            e.term = t
+            self.errors.append(e)
+
 
     def import_declare_doc(self, d):
         """Import a declare cod that has been parsed and converted to a dict"""
 
-        for e in d['declaresection']:
-            if e:
-                self._sections[e['section_name'].lower()] = {
-                    'args': [v for k, v in sorted((k, v) for k, v in e.items() if isinstance(k, int))],
-                    'terms': list()
-                }
-
-        for e in d['declareterm']:
-            terms = self.join(*Term.split_term_lower(e['term_name']))
-            self._terms[terms] = e
-
-            if 'section' in e and e['section']:
-
-                if e['section'] not in self._sections:
-                    self._sections[e['section'].lower()] = {
-                        'args': [],
+        if 'declaresection' in d:
+            for e in d['declaresection']:
+                if e:
+                    self._sections[e['section_name'].lower()] = {
+                        'args': [v for k, v in sorted((k, v) for k, v in e.items() if isinstance(k, int))],
                         'terms': list()
                     }
 
-                st = self._sections[e['section'].lower()]['terms']
+        if 'declareterm' in d:
+            for e in d['declareterm']:
+                terms = self.join(*Term.split_term_lower(e['term_name']))
+                self._terms[terms] = e
 
-                if e['section'] not in st:
-                    st.append(e['term_name'])
+                if 'section' in e and e['section']:
 
-        for e in d['declarevalueset']:
-            for k,v in self._terms.items():
-                if 'valueset' in v and e.get('name',None) == v['valueset']:
-                    v['valueset'] = e['value']
+                    if e['section'] not in self._sections:
+                        self._sections[e['section'].lower()] = {
+                            'args': [],
+                            'terms': list()
+                        }
+
+                    st = self._sections[e['section'].lower()]['terms']
+
+                    if e['section'] not in st:
+                        st.append(e['term_name'])
+
+        if 'declarevalueset' in d:
+            for e in d['declarevalueset']:
+                for k,v in self._terms.items():
+                    if 'valueset' in v and e.get('name',None) == v['valueset']:
+                        v['valueset'] = e['value']
 
 
 class DeclareTermInterpreter(TermInterpreter):
